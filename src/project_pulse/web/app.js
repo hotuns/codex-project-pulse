@@ -82,6 +82,39 @@ function badge(s) {
   const unread = s.needsReview;
   return `<span class="badge ${unread ? "unread" : esc(s.status)}">${icon(unread ? "mail" : s.status === "running" ? "loader-circle" : s.status === "completed" ? "check" : s.status === "failed" ? "circle-alert" : "circle")}${unread ? "完成未读" : labels[s.status] || "状态未知"}</span>`;
 }
+const agentCounts = new WeakMap();
+function multiAgent() {
+  const d = state.data;
+  if (!d) return false;
+  if (!agentCounts.has(d)) agentCounts.set(d, new Set(d.sessions.map((s) => s.agent || "codex")).size);
+  return agentCounts.get(d) > 1;
+}
+// Which agent a chat belongs to; shown only when more than one agent has sessions.
+function agentLabel(s) {
+  return multiAgent() ? s.agentLabel || "Codex" : "";
+}
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Embedded panels may not grant clipboard access; fall back to a selection copy.
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+  document.body.append(area);
+  area.select();
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  }
+  area.remove();
+  return copied;
+}
 function toast(message) {
   const el = document.querySelector("#toast");
   el.textContent = message;
@@ -230,7 +263,7 @@ function projectCard(p) {
   return `<article class="project-card ${expanded ? "expanded" : ""}" data-state="${tone}" aria-label="${esc(p.name)}"><div class="project-card-heading"><span class="project-icon">${icon("folder")}</span><button class="project-name" title="${esc(p.name)}" data-action="project" data-id="${esc(p.id)}">${esc(p.name)}</button><button class="icon-btn pin ${p.pinned ? "pinned" : ""}" data-action="pin" data-id="${esc(p.id)}" aria-label="${p.pinned ? "取消置顶" : "置顶"} ${esc(p.name)}" title="${p.pinned ? "取消置顶" : "置顶"}">${icon("pin")}</button></div><span class="project-path" title="${esc(p.roots.join("\n"))}">${esc(path)}</span><div class="project-metrics">${projectMetric(p, p.running, "进行中", "running", "sessions", "running")}${projectMetric(p, p.unreadKnown === false ? null : p.unread, "未读", "unread", "sessions", "unread")}${projectMetric(p, p.todoCount, "待办", "todos", "todos")}${projectMetric(p, p.sessionCount, "会话", "session-count", "sessions")}</div><div class="project-card-footer"><time class="project-updated" title="最近活动">${p.updatedAt ? relative(p.updatedAt) : "—"}</time><div class="project-actions"><button class="icon-btn" data-action="new-todo" data-project="${esc(p.id)}" aria-label="为 ${esc(p.name)} 添加待办" title="添加待办">${icon("plus")}</button><button class="icon-btn expand-toggle" id="expand-${esc(p.id)}" data-action="expand-project" data-id="${esc(p.id)}" aria-label="${expanded ? "收起" : "展开"} ${esc(p.name)} 的会话" title="${expanded ? "收起会话" : "展开会话"}" aria-expanded="${expanded}" aria-controls="project-sessions-${esc(p.id)}">${icon(expanded ? "chevron-up" : "chevron-down")}</button></div></div><section class="project-sessions" id="project-sessions-${esc(p.id)}" aria-label="${esc(p.name)} 的会话" ${expanded ? "" : "hidden"}>${expanded ? `${sessions.length ? sessions.slice(0, 4).map(projectSessionRow).join("") : '<p class="inline-empty">暂无会话</p>'}<div class="project-sessions-footer"><button class="text-btn" data-action="project" data-id="${esc(p.id)}">全部会话 <span>${p.sessionCount}</span>${icon("arrow-right")}</button></div>` : ""}</section></article>`;
 }
 function projectSessionRow(s) {
-  return `<article class="project-session"><div class="project-session-heading"><button class="project-session-title" data-action="open" data-id="${esc(s.id)}" title="${esc(s.title)}">${esc(s.title)}</button><button class="icon-btn" data-action="new-todo" data-project="${esc(s.projectId)}" data-session="${esc(s.id)}" aria-label="关联待办：${esc(s.title)}" title="关联待办">${icon("plus")}</button></div><div class="project-session-meta">${badge(s)}<time>${relative(s.updatedAt)}</time></div></article>`;
+  return `<article class="project-session"><div class="project-session-heading"><button class="project-session-title" data-action="open" data-id="${esc(s.id)}" title="${esc(s.title)}">${esc(s.title)}</button><button class="icon-btn" data-action="new-todo" data-project="${esc(s.projectId)}" data-session="${esc(s.id)}" aria-label="关联待办：${esc(s.title)}" title="关联待办">${icon("plus")}</button></div><div class="project-session-meta">${badge(s)}<time>${agentLabel(s) ? `${esc(agentLabel(s))} · ` : ""}${relative(s.updatedAt)}</time></div></article>`;
 }
 function empty(title, iconName = "inbox") {
   return `<div class="empty-state">${icon(iconName)}<p>${title}</p></div>`;
@@ -258,7 +291,7 @@ function overview() {
   )}${items.length ? `<section class="project-grid" aria-label="项目列表">${items.map(projectCard).join("")}</section>` : empty("暂无匹配项目", "folder-search")}`;
 }
 function sessionRow(s) {
-  return `<article class="session-row"><span class="dot ${s.needsReview ? "unread" : esc(s.status)}"></span><div class="session-main"><button data-action="open" data-id="${esc(s.id)}" title="${esc(s.title)}">${esc(s.title)}</button><p>${esc(pname(s.projectId))}<span> · ${relative(s.updatedAt)}</span></p></div>${badge(s)}<button class="icon-btn" data-action="new-todo" data-project="${esc(s.projectId)}" data-session="${esc(s.id)}" aria-label="关联待办：${esc(s.title)}" title="关联待办">${icon("plus")}</button></article>`;
+  return `<article class="session-row"><span class="dot ${s.needsReview ? "unread" : esc(s.status)}"></span><div class="session-main"><button data-action="open" data-id="${esc(s.id)}" title="${esc(s.title)}">${esc(s.title)}</button><p>${esc(pname(s.projectId))}${agentLabel(s) ? `<span> · ${esc(agentLabel(s))}</span>` : ""}<span> · ${relative(s.updatedAt)}</span></p></div>${badge(s)}<button class="icon-btn" data-action="new-todo" data-project="${esc(s.projectId)}" data-session="${esc(s.id)}" aria-label="关联待办：${esc(s.title)}" title="关联待办">${icon("plus")}</button></article>`;
 }
 function sessionsView() {
   const attention = state.view === "attention";
@@ -433,7 +466,7 @@ function sessionOptions(projectId, selected = "") {
 function settings() {
   state.modal = "settings";
   mountOverlay(
-    `<div class="overlay-backdrop" data-action="close"></div><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title"><div class="dialog-head"><h2 id="settings-title" class="settings-title"><span class="brand-mark" aria-hidden="true"></span>连接与数据</h2><button class="icon-btn" data-action="close" aria-label="关闭设置">${icon("x")}</button></div><div class="settings-copy"><span class="source-badge">${icon("shield-check")}本机只读连接</span><p>${esc(state.data.source.scope)}</p><p>项目和会话来自当前电脑的 Codex。待办和置顶独立保存。</p><p>点击会话直接打开原对话，未读跟随 Codex 桌面的阅读状态。</p><ul>${state.data.source.limitations.map((l) => `<li>${esc(l)}</li>`).join("")}</ul><p>不会上传项目和会话，不需要 API Key。请勿将此本机面板公开部署。</p><button class="secondary" data-action="export">${icon("download")}导出待办与项目清单</button></div></section>`,
+    `<div class="overlay-backdrop" data-action="close"></div><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="settings-title"><div class="dialog-head"><h2 id="settings-title" class="settings-title"><span class="brand-mark" aria-hidden="true"></span>连接与数据</h2><button class="icon-btn" data-action="close" aria-label="关闭设置">${icon("x")}</button></div><div class="settings-copy"><span class="source-badge">${icon("shield-check")}本机只读连接</span><p>${esc(state.data.source.scope)}</p><p>项目和会话来自当前电脑的 ${esc((state.data.source.sources || []).filter((s) => s.ok).map((s) => s.label).join("、") || "Codex")}。待办和置顶独立保存。</p><p>点击会话打开原对话：Codex 跳转桌面 App，Claude Code 在终端恢复，其他 agent 复制恢复命令。未读只跟随 Codex 桌面的阅读状态。</p><ul>${state.data.source.limitations.map((l) => `<li>${esc(l)}</li>`).join("")}</ul><p>不会上传项目和会话，不需要 API Key。请勿将此本机面板公开部署。</p><button class="secondary" data-action="export">${icon("download")}导出待办与项目清单</button></div></section>`,
   );
 }
 async function actionClick(event) {
@@ -476,9 +509,16 @@ async function actionClick(event) {
         break;
       case "open":
         button.disabled = true;
-        await request("/api/open", { id });
-        toast("已请求打开对话");
-        button.disabled = false;
+        try {
+          const opened = await request("/api/open", { id });
+          if (opened?.dispatched === false && opened.command) {
+            toast((await copyText(opened.command)) ? "已复制恢复命令，在终端粘贴运行" : opened.command);
+          } else {
+            toast(opened?.command ? "已在终端恢复对话" : "已请求打开对话");
+          }
+        } finally {
+          button.disabled = false;
+        }
         break;
       case "new-todo":
         showTodo(null, button.dataset.project, button.dataset.session);

@@ -1,6 +1,6 @@
 ---
 name: project-pulse
-description: 打开 Codex 项目总控台，查看本机各项目的进行中会话和完成未读结果，管理绑定项目或会话的个人待办。用于跨项目掌握进展与后续行动。
+description: 打开项目总控台，查看本机各项目里 Codex、Claude Code 以及 magpie 所列 agent 的进行中会话和完成未读结果，管理绑定项目或会话的个人待办。用于跨项目、跨 agent 掌握进展与后续行动。
 ---
 
 # Project Pulse
@@ -8,6 +8,7 @@ description: 打开 Codex 项目总控台，查看本机各项目的进行中会
 Use the plugin's `project_pulse` MCP tools when available.
 
 - To show the dashboard, call `open_dashboard`. It declares a self-contained MCP App UI resource and global/thread entrypoints for compatible clients. Prefer the native plugin panel when the host renders it. If the current client does not render the resource, open the returned URL with Codex `open_in_codex` when available, otherwise return the verified local link. Do not claim a sidebar entry appeared without observing it.
+- Sessions come from Codex, Claude Code and agents magpie lists; each has `agent`/`agentLabel`. Only Codex sessions have a read state: never call a Claude Code or magpie session unread or read. Claude Code status comes from its last message, and `running` only means the transcript was written in the last 30 minutes.
 - To summarize progress, use `list_projects` and filtered `list_sessions`. Use returned IDs, names and statuses. Follow `nextOffset` when a complete list is requested. Unread follows the desktop read index, not historical SQLite receipts. If `source.readStateAvailable` or a session's `unreadKnown` is false, report the read state as unavailable rather than claiming it is read. Processing acknowledgements do not subtract from unread counts. A completed turn is not proof that the entire task or project is done.
 - To add a todo, identify the intended project from the current chat context or `list_projects`. Resolve ambiguous duplicate project names by their paths. If binding a session, verify it belongs to that project with `list_sessions`. Use `save_todo`; do not create unrelated Codex chats or send messages to other chats.
 - To update a todo, use `list_todos` to resolve its ID and call `save_todo` with only the requested changes. Existing due dates, priority, and bindings are preserved when omitted.

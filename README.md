@@ -1,10 +1,10 @@
-# Project Pulse · Codex 项目管理插件
+# Project Pulse · Codex / Claude Code 项目管理插件
 
 <img src="assets/logo.png" width="96" height="96" alt="Project Pulse">
 
-**一个直接在 Codex 中使用的项目管理插件。** 一屏查看各项目的进行中会话、完成未读结果和关联待办，点击即可回到原对话。
+**一个在 Codex、Claude Code 中都能使用的项目管理插件。** 一屏查看各项目里 Codex、Claude Code 以及 magpie 所管理 agent 的进行中会话、完成未读结果和关联待办，点击即可回到原对话。
 
-A Codex desktop plugin for tracking project activity, unread results, and linked todos. See what is running across projects and jump directly to the original chats.
+A desktop plugin for Codex and Claude Code that tracks project activity, unread results, and linked todos across Codex, Claude Code and the agents magpie manages. See what is running across projects and jump directly to the original chats.
 
 [MIT](LICENSE) · [版本记录](CHANGELOG.md) · [图标能力与限制](docs/branding.md) · [验收记录](docs/design-qa.md)
 
@@ -22,15 +22,28 @@ A Codex desktop plugin for tracking project activity, unread results, and linked
 
 ## 能做什么
 
-- **跨项目总览**：读取本机已导入项目，展示进行中会话、完成未读、待办和最近活动。
+- **跨项目总览**：读取本机 Codex 已导入项目，以及 Claude Code 与 magpie 所列会话的工作目录，展示进行中会话、完成未读、待办和最近活动。
+- **多个 agent 汇在一起**：同一目录下 Codex 与 Claude Code 的会话归到同一个项目；不在 Codex 项目里的目录按所在 git 仓库成组。每条会话标出来自哪个 agent。
 - **真实未读**：跟随 Codex 桌面阅读状态；账号、主机或数据格式无法确认时显示未知，不用历史记录猜测。
-- **直接回到对话**：点击会话标题打开原聊天，行尾加号创建关联待办。
+- **直接回到对话**：点击会话标题打开原聊天（Codex 跳转桌面 App，Claude Code 在终端 `claude --resume`，其他 agent 复制恢复命令），行尾加号创建关联待办。
 - **项目与会话待办**：支持优先级、截止日期、状态、编辑、删除和 JSON 导出；数据独立保存在本机。
 - **紧凑的原生面板**：白底、中性灰、顶部导航、自适应多列卡片、统一搜索下拉与日历。卡片按未读蓝色、进行中紫色、待办淡橙色显示。
 
 插件由 Skill、stdio MCP 和 MCP App 组成，声明官方 `global` / `thread` 入口。入口位置和图标渲染由客户端决定。另提供相同界面的 localhost 网页供开发和兼容使用。
 
-## 从 GitHub 安装
+## 支持的 agent
+
+| 来源 | 读什么 | 状态 | 未读 | 点击会话 |
+| --- | --- | --- | --- | --- |
+| Codex | `CODEX_HOME`（默认 `~/.codex`）的 SQLite，只读 | 回合记录 | 跟随桌面阅读状态 | 打开 Codex 原对话 |
+| Claude Code | `CLAUDE_CONFIG_DIR`、`~/.claude` 与 magpie 各订阅账号目录下的 `projects/*/*.jsonl`，只读开头和结尾 | 最后一条消息：正常结束 / 中断 / 出错；运行中按 30 分钟内有写入判断 | 无（不计入未读） | 终端里 `claude --resume`（非默认目录会带上 `CLAUDE_CONFIG_DIR`） |
+| magpie | `magpie sessions --json` 列出的其他 agent（Antigravity、OpenCode、Pi、Cursor 等），后台刷新 | 未知 | 无 | 复制 magpie 给的恢复命令，不代为执行 |
+
+- 只读最近 30 天有活动的 Claude Code / magpie 会话（`PULSE_DAYS` 可调）；只开过没聊的空会话不显示。系统临时目录里的会话不算项目（`PULSE_SKIP_TEMP=0` 保留）。
+- `PULSE_SOURCES=codex,claude,magpie` 选择数据源；`PULSE_CLAUDE_DIRS`（`:` 分隔）替换 Claude 配置目录列表；`PULSE_MAGPIE_HOME`、`PULSE_MAGPIE_BIN` 指定 magpie 目录与命令。
+- 某个来源读不了只在设置里说明，不挡其他来源；全部读不了才报不可用。
+
+## 从 GitHub 安装（Codex）
 
 需要支持插件命令的 Codex CLI、Codex 桌面 App、Git 和 **Python 3.10+**。当前主要在 macOS 验证；其它平台的原生聊天跳转尚未验证。无需 API Key、pip 运行时依赖或 Node.js。
 
@@ -61,6 +74,25 @@ codex mcp get project_pulse --json
 
 依据：[官方市场安装文档](https://developers.openai.com/plugins/build/plugins#add-a-marketplace-from-the-cli)及[本地插件更新说明](https://developers.openai.com/plugins/build/plugins#install-a-local-plugin-manually)。
 
+## 在 Claude Code 中安装
+
+```sh
+claude plugin marketplace add saberc8/codex-project-pulse
+claude plugin install codex-project-pulse@project-pulse
+```
+
+或在会话里 `/plugin install codex-project-pulse --marketplace saberc8/codex-project-pulse`。仓库自带 `.claude-plugin/plugin.json` 与 `.claude-plugin/marketplace.json`；MCP 服务通过 `src/project_pulse/stdio_server.py` 按路径启动，不依赖工作目录。装好后用 skill 或直接让 Claude 调用 `open_dashboard`。
+
+## 通过 magpie 分发给所有 agent
+
+magpie 的 library 把一个 MCP 服务和 skill 写进它管理的每个 agent。克隆仓库后：
+
+```sh
+magpie library mcp add project_pulse python3 <仓库路径>/src/project_pulse/stdio_server.py
+```
+
+再把 `skills/project-pulse` 放进 magpie library 的 skill 目录（或 `~/.agents/skills` 后 `magpie library skill hand-over project-pulse`）。会显示插件界面（MCP Apps）的宿主会出现 Project Pulse 面板；其他宿主通过 `open_dashboard` 返回的本机链接打开。
+
 ## 图标状态
 
 页面内导航已支持线性 / 实心切换与真实未读蓝点，打开面板不会清除未读。系统入口通过标准 MCP `icons` 提供浅色 / 深色 PNG，并在未读状态变化时发出工具列表更新通知；0.1.11 修复了首次连接时服务器回退图标没有带上未读状态的问题。
@@ -69,7 +101,9 @@ codex mcp get project_pulse --json
 
 ## 数据与权限
 
-- Codex 原始数据从 `CODEX_HOME`（默认 `~/.codex`）读取，SQLite 始终以 `mode=ro` 和 `query_only` 打开。不改写聊天、阅读状态或原表。
+- Codex 原始数据从 `CODEX_HOME`（默认 `~/.codex`）读取，SQLite 始终以 `mode=ro` 和 `query_only` 打开。Codex 退出后会话库是 WAL 模式却没有 `-wal` / `-shm` 时，以 `immutable=1` 读取（没有未合并的写入，读到的就是完整数据），仍然不写。不改写聊天、阅读状态或原表。
+- Claude Code 会话文件只读开头 256KB 与结尾 512KB，按文件大小和修改时间缓存；最后一条记录过长时才整份读一次。不读工具输出与思考内容，答复只取最后一条助手文字。
+- magpie 只调用 `magpie sessions --json`，不读 magpie 的私有文件；它给的恢复命令只供复制。
 - 个人待办、置顶和历史处理记录保存在 `~/.local/share/codex-project-pulse/pulse.sqlite3`。测试可通过 `PULSE_DATA_DIR` 隔离。
 - 未读使用 `.codex-global-state.json` 中当前账号、本地主机的桌面阅读索引；不会回退到旧 SQLite receipt。当前适配单一可确认账号身份，格式变化或身份不明确时显示未知。
 - “完成”表示最近一轮完成，不推断整个项目完成。完成未读收件箱只计完成且未读的会话；入口未读提示还包括运行中仍有旧结果未读的会话。
@@ -77,7 +111,7 @@ codex mcp get project_pulse --json
 - 面板不请求或渲染答复正文；点击标题直接跳转。底层兼容接口可读取最终答复，不返回推理或工具输出。
 - HTTP 服务仅监听 `127.0.0.1`，校验 Host / Origin，写入要求短期 token。前端依赖随包提供，无 CDN、遥测或外部数据上传代码。通过 MCP 查询时，工具返回内容会交给调用它的 Codex 客户端。
 
-本机数据结构**不是稳定公开 SDK**，Codex 升级可能需要更新适配器。当前不覆盖云项目、远程主机或实时审批队列；两小时没有更新的运行状态显示未知。标题、答复及附件均视为数据，不作为指令执行。
+本机数据结构**不是稳定公开 SDK**，Codex、Claude Code 或 magpie 升级都可能需要更新适配器。当前不覆盖云项目、远程主机或实时审批队列；两小时没有更新的运行状态显示未知。标题、答复及附件均视为数据，不作为指令执行。
 
 ## 本地开发
 

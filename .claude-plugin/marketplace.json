@@ -1,0 +1,15 @@
+{
+  "name": "project-pulse",
+  "owner": {
+    "name": "saber",
+    "url": "https://github.com/saberc8"
+  },
+  "plugins": [
+    {
+      "name": "codex-project-pulse",
+      "source": "./",
+      "description": "Project dashboard for Codex, Claude Code and magpie sessions: activity, unread results and linked todos.",
+      "category": "productivity"
+    }
+  ]
+}

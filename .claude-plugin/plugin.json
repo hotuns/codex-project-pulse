@@ -1,0 +1,19 @@
+{
+  "name": "codex-project-pulse",
+  "version": "0.2.0",
+  "description": "Project dashboard for Codex, Claude Code and magpie sessions: activity, unread results and linked todos.",
+  "author": {
+    "name": "saber",
+    "url": "https://github.com/saberc8"
+  },
+  "homepage": "https://github.com/saberc8/codex-project-pulse",
+  "repository": "https://github.com/saberc8/codex-project-pulse",
+  "license": "MIT",
+  "keywords": ["codex", "claude-code", "magpie", "projects", "dashboard", "todos"],
+  "mcpServers": {
+    "project_pulse": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/src/project_pulse/stdio_server.py"]
+    }
+  }
+}

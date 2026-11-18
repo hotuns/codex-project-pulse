@@ -29,13 +29,34 @@ def display_title(raw):
     return text[:150] + ('…' if len(text) > 150 else '') if text else '未命名会话'
 
 
+def _open(uri):
+    conn = sqlite3.connect(uri, uri=True, timeout=2)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only=ON")
+        # Opening is lazy; touch the schema so a failed open surfaces here.
+        conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+    except sqlite3.Error:
+        conn.close()
+        raise
+    return conn
+
+
 def readonly(path: Path):
     if not path.is_file():
         raise Unavailable(f"找不到本机 Codex 数据文件：{path.name}")
-    conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA query_only=ON")
-    return conn
+    uri = path.resolve().as_uri()
+    try:
+        return _open(uri + "?mode=ro")
+    except sqlite3.OperationalError:
+        # A WAL-mode database whose -wal/-shm files were removed when the app
+        # exited cannot be opened with mode=ro: SQLite would have to create the
+        # shared-memory file. With no -wal content the main file is complete,
+        # so reading it as immutable is exact and still never writes.
+        wal = path.with_name(path.name + "-wal")
+        if wal.exists() and wal.stat().st_size:
+            raise
+        return _open(uri + "?immutable=1")
 
 
 def status_of(turn, updated_at, now):
@@ -87,6 +108,14 @@ def desktop_unread_index(state):
     return {"known": True, "ids": set(ids), "scope": scope}
 
 
+def match_root(cwd, projects):
+    """The project whose root contains cwd; the longest root wins."""
+    cwd = os.path.normpath(cwd)
+    matches = [(len(root), p["id"]) for p in projects for root in p["roots"]
+               if cwd == root or cwd.startswith(root.rstrip(os.sep) + os.sep)]
+    return max(matches)[1] if matches else None
+
+
 def project_for(row, projects, assignments, migration):
     explicit = assignments.get(row["id"], {}).get("projectId")
     by_id = {p["id"]: p for p in projects}
@@ -95,10 +124,7 @@ def project_for(row, projects, assignments, migration):
     native = migration.get(row.get("project_id"), row.get("project_id"))
     if native in by_id:
         return native
-    cwd = os.path.normpath(row["cwd"])
-    matches = [(len(root), p["id"]) for p in projects for root in p["roots"]
-               if cwd == root or cwd.startswith(root.rstrip(os.sep) + os.sep)]
-    return max(matches)[1] if matches else None
+    return match_root(row["cwd"], projects)
 
 
 class CodexReader:
@@ -163,6 +189,7 @@ class CodexReader:
                         "readStateSource": "desktop-v1" if desktop_read["known"] else "unavailable",
                         "readRevision": f"desktop-v1:{desktop_read['scope']}:{turn_id}:{int(unread)}" if desktop_read["known"] else None,
                         "url": "codex://threads/" + row["id"],
+                        "agent": "codex", "agentLabel": "Codex",
                     })
             return {"projects": projects, "sessions": sessions, "source": {
                 "mode": "local-readonly", "label": "本机 Codex", "updatedAt": now,
@@ -238,7 +265,9 @@ class Store:
         for p in snapshot["projects"]:
             items = [s for s in snapshot["sessions"] if s["projectId"] == p["id"]]
             p.update({"pinned": p["id"] in pinned, "sessionCount": len(items), "running": sum(s["status"] == "running" for s in items), "unread": sum(s["needsReview"] for s in items), "failed": sum(s["status"] == "failed" for s in items), "todoCount": sum(t["projectId"] == p["id"] and t["status"] != "done" for t in todos), "updatedAt": max((s["updatedAt"] for s in items), default=0)})
-            p["unreadKnown"] = all(s["unreadKnown"] for s in items)
+            # Only Codex has a read state. Other agents' sessions neither count as
+            # unread nor make the whole project's unread count unknown.
+            p["unreadKnown"] = all(s["unreadKnown"] for s in items if s.get("agent", "codex") == "codex")
         snapshot["todos"] = todos
         # The entrypoint badge follows unread chats regardless of their current
         # turn status. The existing completed-unread inbox keeps its own count.

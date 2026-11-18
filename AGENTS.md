@@ -1,6 +1,6 @@
 # Project Pulse 维护约定
 
-本仓库独立维护 Codex 项目总控台插件；仓库根目录即插件根目录。源码、测试、插件清单和维护文档在这里修改和提交。所有运行代码集中在 `src/project_pulse/`，前端在其 `web/` 子目录；Logo 在 `assets/`，维护文档在 `docs/`。不在仓库根目录散放运行代码，不创建快捷方式、兼容符号链接或重复源码。
+本仓库独立维护项目总控台插件（Codex、Claude Code；数据另含 magpie 所列 agent）；仓库根目录即插件根目录。源码、测试、插件清单和维护文档在这里修改和提交。所有运行代码集中在 `src/project_pulse/`，前端在其 `web/` 子目录；Logo 在 `assets/`，维护文档在 `docs/`。不在仓库根目录散放运行代码，不创建快捷方式、兼容符号链接或重复源码。
 
 ## 产品与视觉
 
@@ -19,6 +19,9 @@
 
 ## 数据边界
 
+- Codex、Claude Code 和 magpie 的数据都只读：Codex SQLite 用 `mode=ro`（缺 WAL 旁路文件时 `immutable=1`），Claude Code 会话文件只读开头和结尾，magpie 只调用 `magpie sessions --json`。各 agent 的适配放在 `src/project_pulse/agents.py`，一个来源失败不得挡住其他来源。
+- 只有 Codex 有阅读状态；其他 agent 的会话不计入未读，也不让项目未读变成未知。magpie 给的恢复命令只复制、不执行；Claude Code 的恢复命令由本插件按校验过的会话号与引号转义后的目录生成。
+- 测试不得读取开发者本机的真实 agent 数据：用 `PULSE_CLAUDE_DIRS=""`、`PULSE_MAGPIE_BIN=""` 或注入的读取器隔离。
 - Codex 原生数据库和阅读状态只读。个人待办、置顶及历史处理记录保存在独立的 `~/.local/share/codex-project-pulse/`，不得把运行数据放进仓库。
 - 完成未读必须对齐 Codex App 阅读状态；历史 SQLite receipt 不代表当前桌面蓝点。账号、主机或 schema 无法确认时显示未知，不回退猜测。
 - 本轮完成不等于项目完成，处理确认不等于已读。当前界面不显示历史处理确认入口。
@@ -31,7 +34,7 @@
 - 自行运行本地服务并打开可用浏览器预览，不让用户代为启动服务。默认地址为 `http://127.0.0.1:4318`。
 - 修改后执行与范围匹配的检查。数据、协议或安装迁移使用 `python3 -m unittest discover -s tests -v`；前端语法使用 `node --check src/project_pulse/web/app.js`、`node --check src/project_pulse/web/components.js` 和 `node --check src/project_pulse/web/brand.js`；前端状态与 bridge 使用 `node --test tests/*.test.cjs`。
 - 视觉调整通过浏览器验收桌面、面板与窄屏，检查导航、横向溢出、卡片列宽和必要交互。记录实际证据到 `docs/design-qa.md`，不能把不可访问的原生 Codex 窗口当作已验收。
-- 发行时保持 `plugin.json`、`.codex-plugin/plugin.json`、`src/project_pulse/__init__.py` 与 `src/project_pulse/web/mcp-bridge.js` 的版本一致。纯仓库迁移不需要改变产品版本。
+- 发行时保持 `plugin.json`、`.codex-plugin/plugin.json`、`.claude-plugin/plugin.json`、`src/project_pulse/__init__.py` 与 `src/project_pulse/web/mcp-bridge.js` 的版本一致。纯仓库迁移不需要改变产品版本。
 - 原生 UI 资源地址必须包含发行版本；禁止所有版本共用不变的 HTML URI。CLI 安装成功只表示磁盘副本更新，不能证明现有 MCP 进程或面板已重载。更新后按官方文档完整重启桌面 App，并区分安装、运行进程和原生画面三层验收；不要用网页预览代替原生验收，也不要擅自重启用户正在工作的整个 App。
 - 本地市场入口在 `.agents/plugins/marketplace.json`，插件来源为仓库根目录；按 README 的官方 CLI 流程安装。
 - 公开市场名为 `project-pulse`，安装标识为 `codex-project-pulse@project-pulse`。公开仓库不提交本机路径、真实项目或会话内容、个人运行数据和未脱敏的验收截图。

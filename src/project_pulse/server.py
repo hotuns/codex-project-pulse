@@ -14,14 +14,15 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from . import __version__
-from .data import CodexReader, Store, Unavailable
+from .agents import MultiReader, terminal_command
+from .data import Store, Unavailable
 
 ROOT = Path(__file__).resolve().parent
 
 
 class Service:
     def __init__(self, reader=None, store=None):
-        self.reader, self.store = reader or CodexReader(), store or Store()
+        self.reader, self.store = reader or MultiReader(), store or Store()
         self.cache, self.cache_at = None, 0
         self.lock = threading.Lock()
 
@@ -56,7 +57,14 @@ class Service:
                 raise ValueError("项目不存在")
             self.store.pin(values["id"], values.get("pinned"))
         elif action == "open":
-            s = self.session(values.get("id"))
+            return self.open(self.session(values.get("id")))
+        else:
+            raise ValueError("未知操作")
+        return {"ok": True}
+
+    def open(self, s):
+        """Codex chats open by URL; Claude Code resumes in Terminal; other agents return a command to copy."""
+        if s.get("url"):
             command = ["open", s["url"]] if sys.platform == "darwin" else ["xdg-open", s["url"]]
             if os.environ.get("PULSE_DISABLE_OPEN") == "1":
                 raise ValueError("此测试环境不打开原生应用")
@@ -64,9 +72,13 @@ class Service:
             if result.returncode:
                 raise ValueError("无法打开 Codex，请复制会话链接后手动打开")
             return {"ok": True, "url": s["url"], "dispatched": True}
-        else:
-            raise ValueError("未知操作")
-        return {"ok": True}
+        resume = self.reader.resume(s["id"]) if hasattr(self.reader, "resume") else None
+        if not resume:
+            raise ValueError("这个会话没有可用的打开方式")
+        launchable = resume["runnable"] and sys.platform == "darwin" and os.environ.get("PULSE_DISABLE_OPEN") != "1"
+        if launchable and subprocess.run(terminal_command(resume["command"]), capture_output=True, timeout=8, check=False).returncode == 0:
+            return {"ok": True, "dispatched": True, "command": resume["command"]}
+        return {"ok": True, "dispatched": False, "command": resume["command"]}
 
 
 def make_handler(service, token):
